@@ -3,9 +3,12 @@
 from appdirs import user_config_dir
 from configparser import ConfigParser
 from os.path import join
-from requestes import get
+from requests import get
 from requests.auth import HTTPBasicAuth
-from icalendar import Calendar, Event
+from icalendar import Calendar as iCalendar
+from icalendar import Event
+from argparse import ArgumentParser
+from subprocess import call
 
 
 class Calendar:
@@ -13,42 +16,74 @@ class Calendar:
     configPath = join(user_config_dir('modes', 'fahrstuhl'), 'modes.ini')
 
     def __init__(self):
-        self.config.read(configPath)
-        user = config['calendar']['username']
-        link = config['calendar']['link']
-        password = config['calendar']['password']
+        self.refresh()
+
+    def refresh(self):
+        self.config.read(self.configPath)
+        user = self.config['calendar']['username']
+        link = self.config['calendar']['link']
+        password = self.config['calendar']['password']
         response = get(link, auth=HTTPBasicAuth(user, password))
-        self.calendar = Calendar.from_ical(response.text)
+        self.calendar = iCalendar.from_ical(response.text)
 
     def create_timer_units(self):
         self.units = []
         for event in self.calendar.subcomponents:
-            self.units.append(create_timer_unit(each))
+            self.units.append(ModeTimespan(event))
 
-    def create_timer_unit(self, event):
-        return unit
+    def write_timer_units(self):
+        for unit in self.units:
+            unit.write_timers()
+
+#    def activate_timer_units(self):
+        
+
+    def implement(self):
+        self.create_timer_units()
+        self.write_timer_units()
+
 
 class ModeTimespan:
-    
     config = ConfigParser()
     configPath = join(user_config_dir('modes', 'fahrstuhl'), 'modes.ini')
-    systemd = ConfigParser()
     systemdUnitPath = join(user_config_dir('systemd'), 'user')
+    dateTimeFormat = '%Y-%m-%d %H:%M:%S'
+    filenameFormat = '%Y-%m-%d_%H-%M-%S'
     
-    def __init__(self, event):
+    def __init__(self, event, name):
+        self.config.read(self.configPath)
         self.event = event
-        self.start = event.decoded('dtstart').strftime(self.config['calendar']['datetimeformat'])
-        self.end = event.decoded('dtend').strftime(self.config['calendar']['datetimeformat'])
+        self.start = event.decoded('dtstart').strftime(self.dateTimeFormat)
+        self.end = event.decoded('dtend').strftime(self.dateTimeFormat)
+        self.name = event.decoded('dtstart').strftime(self.filenameFormat)
+        self.unit = event.decoded('summary').decode("utf-8")
+        self.startTimer = self.create_start_timer()
+        self.endTimer = self.create_end_timer()
 
     def create_start_timer(self):
         timer = ConfigParser()
+        timer.optionxform = str
         timer['Unit'] = {'Description': 'Timer to start a mode'}
-        timer['Timer'] = {'OnCalendar': self.start}
+        timer['Timer'] = {'OnCalendar': self.start,
+                          'Unit': self.unit + "-start.service"}
         return timer
 
     def create_end_timer(self):
         timer = ConfigParser()
+        timer.optionxform = str
         timer['Unit'] = {'Description': 'Timer to stop a mode'}
-        timer['Timer'] = {'OnCalendar': self.end}
+        timer['Timer'] = {'OnCalendar': self.end,
+                          'Unit': self.unit + "-end.service"}
         return timer
+
+    def write_timers(self):
+        with open(join(self.systemdUnitPath, ('start' + self.name + '.timer')), 'w') as f:
+            self.startTimer.write(f)
+        with open(join(self.systemdUnitPath, ('end' + self.name + '.timer')), 'w') as f:
+            self.endTimer.write(f)
+
+if __name__ == "__main__":
+    parser = ArgumentParser(description='Download and create work schedule')
+    schedule = Calendar()
+    schedule.implement()
 
