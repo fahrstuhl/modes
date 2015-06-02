@@ -105,7 +105,6 @@ class Task:
         if self.refreshCommand:
             call(self.refreshCommand)
 
-
     def undo(self):
         call(self.undoCommand)
 
