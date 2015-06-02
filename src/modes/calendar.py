@@ -82,6 +82,33 @@ class ModeTimespan:
         with open(join(self.systemdUnitPath, ('end' + self.name + '.timer')), 'w') as f:
             self.endTimer.write(f)
 
+class Task:
+    def __init__(self, name):
+        self.config = ConfigParser()
+        self.configPath = join(user_config_dir('modes', 'fahrstuhl'), 'tasks.d', self.name + '.ini')
+        self.config.read(self.configPath)
+        self.doCommand = self.get_command(self.config['Task']['do'])
+        self.undoCommand = self.get_command(self.config['Task']['undo'])
+        try:
+            self.refreshCommand = self.get_command(self.config['Task']['refresh'])
+        except KeyError, e:
+            self.refreshCommand = None
+
+    def get_command(self, string):
+        command = string.split()
+        return command
+
+    def do(self):
+        call(self.doCommand)
+
+    def refresh(self):
+        if self.refreshCommand:
+            call(self.refreshCommand)
+
+
+    def undo(self):
+        call(self.undoCommand)
+
 if __name__ == "__main__":
     parser = ArgumentParser(description='Download and create work schedule')
     schedule = Calendar()
